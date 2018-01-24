@@ -70,11 +70,11 @@ object MainReadFolder {
 
 
     val data = sc.parallelize(Cluster.createInitClusters(numPoints))
-    println(data.count())
+    println("Number of points: " + data.count())
 
     //min,max,avg
     val linkage = new Linkage(numClusters, strategyDistance)
-    println("New Linkage")
+    println("New Linkage with strategy: " + strategyDistance)
 
     val model = linkage.runAlgorithm(distances, numPoints)
 

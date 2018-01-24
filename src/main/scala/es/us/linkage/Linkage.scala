@@ -53,7 +53,7 @@ class Linkage(
         case "max" =>
           //Calcula distancia
           clustersRes = matrix.max()(DistOrdering)
-
+          println("Nuevo máximo:" + clustersRes)
       }
 
       val punto1Aux = clustersRes.getIdW1
@@ -142,7 +142,7 @@ class Linkage(
     for (a <- 0 until (numPoints - numClusters)) {
       val start = System.nanoTime
 
-      println("Buscando minimo:")
+      println("Finding minimum:")
       val clustersRes = distanceStrategy match {
         case "min" =>
           //matrix.collect().foreach(println(_))
@@ -153,14 +153,14 @@ class Linkage(
           matrix.max()(DistOrdering)
 
       }
-      println(s"Nuevo mínimo: $clustersRes")
+      println(s"New minimum: $clustersRes")
 
       val punto1 = clustersRes.getIdW1
       val punto2 = clustersRes.getIdW2
       cont.add(1)
       val newIndex = cont.value.toLong
 
-      println("Nuevo Cluster: " + newIndex + ":" + punto1 + "-" + punto2)
+      println("New Cluster: " + newIndex + ":" + punto1 + "-" + punto2)
 
       //Si no es el ultimo cluster
       if (a < (numPoints - numClusters - 1)) {
@@ -169,6 +169,7 @@ class Linkage(
 
         //Se elimina el punto encontrado
         matrix = matrix.filter(x => !(x.getIdW1 == punto1 && x.getIdW2 == punto2)).repartition(partitionNumber).cache()
+        //println(matrix.collect().foreach(println(_)))
 
         //Se crea un nuevo punto siguiendo la estrategia
         matrix = distanceStrategy match {
@@ -178,13 +179,17 @@ class Linkage(
             val rddUnionPoints = rddPoints1.union(rddPoints2)
 
             //Se comprueba cual de los dos RDD tienen más puntos
-            val newPoints = if (rddPoints1.count() < rddPoints2.count()) {
+            /*val newPoints = if (rddPoints1.count() < rddPoints2.count()) {
               val listPoints2 = rddPoints2.map(x => (x.getIdW2, x.getDist)).collectAsMap()
               rddPoints1.map(x => new Distance(newIndex.toInt, x.getIdW2, math.min(x.getDist, listPoints2(x.getIdW2))))
             } else {
               val listPoints1 = rddPoints1.map(x => (x.getIdW2, x.getDist)).collectAsMap()
               rddPoints2.map(x => new Distance(newIndex.toInt, x.getIdW2, math.min(x.getDist, listPoints1(x.getIdW2))))
-            }
+            }*/
+
+            val matrixCartesian = rddPoints1.cartesian(rddPoints2)
+            val matr = matrixCartesian.filter(x => x._1.getIdW2 == x._2.getIdW2)
+            val newPoints = matr.map(x => new Distance(newIndex.toInt, x._2.getIdW2, math.min(x._1.getDist,x._2.getDist)))
 
             //Elimino los puntos completos
             val matrixSub = matrix.subtract(rddUnionPoints)
@@ -218,7 +223,7 @@ class Linkage(
         matrix.checkpoint()
 
       val duration = (System.nanoTime - start) / 1e9d
-      println(s"TIEMPO: $duration")
+      println(s"TIME: $duration")
 
     }
     linkageModel
@@ -240,7 +245,7 @@ object Linkage {
 
     strategy match {
       case "min" =>
-        res = 100.0
+        res = 100.0 //QUESTION: No se podría poner otro valor ?
 
         c1.getCoordinates.foreach { x =>
           c2.getCoordinates.foreach { y =>

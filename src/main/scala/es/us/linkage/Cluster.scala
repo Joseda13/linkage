@@ -16,9 +16,6 @@ class Cluster(private var coordinates: List[Int]) extends Serializable {
     return new Cluster(this.getCoordinates ::: otherCluster.getCoordinates)
   }
 
-
-
-
   override def toString = s"Cluster($getCoordinates)"
 }
 
