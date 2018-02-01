@@ -1,7 +1,9 @@
 package es.us.linkage
 
+import org.apache.spark.sql.functions.min
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 
 /**
   * Created by Josem on 15/11/2016.
@@ -24,135 +26,28 @@ class Linkage(
     this
   }
 
-  def runAlgorithmOld(distanceMatrix: RDD[Distance], numPoints: Int): LinkageModel = {
-
-    var matrix = distanceMatrix
-
-    val sc = distanceMatrix.sparkContext
-    val cont = sc.accumulator(numPoints)
-
-    val linkageModel = new LinkageModel(scala.collection.mutable.Map[Long, Seq[(Int, Int)]]())
-
-    var a = 0
-    while (a < (numPoints - numClusters)) {
-      println("ENTRO EN WHILE")
-
-      var clustersRes: Distance = null
-
-      // sort by dist
-      object DistOrdering extends Ordering[Distance] {
-        def compare(a: Distance, b: Distance) = a.getDist compare b.getDist
-      }
-
-      distanceStrategy match {
-        case "min" =>
-          //Calcula distancia
-          clustersRes = matrix.min()(DistOrdering)
-          println("Nuevo mínimo:" + clustersRes)
-
-        case "max" =>
-          //Calcula distancia
-          clustersRes = matrix.max()(DistOrdering)
-          println("Nuevo máximo:" + clustersRes)
-      }
-
-      val punto1Aux = clustersRes.getIdW1
-      val punto2Aux = clustersRes.getIdW2
-
-      //Devuelve el punto o el cluster si este pertenece a uno
-      val punto1 = linkageModel.getRealPoint(punto1Aux)
-      val punto2 = linkageModel.getRealPoint(punto2Aux)
-      cont.add(1)
-      val newIndex = cont.value.toLong
-
-
-      println("Nuevo Cluster: " + newIndex + ":" + punto1 + "-" + punto2)
-
-      //Se guarda en el modelo resultado
-      linkageModel.getClusters += newIndex -> Seq((punto1, punto2))
-
-      //se eliminan la distancia de la matriz
-      if (linkageModel.isCluster(punto1)) {
-        val clusterPoints1 = linkageModel.giveMePoints(punto1)
-        if (linkageModel.isCluster(punto2)) {
-          val clusterPoints2 = linkageModel.giveMePoints(punto2)
-          for (clusterPoint1 <- clusterPoints1) {
-            //TODO quizás se pueda hacer filtrado de todos los puntos
-            for (clusterPoint2 <- clusterPoints2) {
-              if (clusterPoint1 < clusterPoint2) {
-                matrix = matrix.filter(x => !(x.getIdW1 == clusterPoint1 && x.getIdW2 == clusterPoint2))
-              } else {
-                matrix = matrix.filter(x => !(x.getIdW1 == clusterPoint2 && x.getIdW2 == clusterPoint1))
-              }
-            }
-          }
-        } else {
-          for (clusterPoint1 <- clusterPoints1) {
-            //TODO quizás se pueda hacer filtrado de todos los puntos
-            if (clusterPoint1 < punto2) {
-              matrix = matrix.filter(x => !(x.getIdW1 == clusterPoint1 && x.getIdW2 == punto2))
-            } else {
-              matrix = matrix.filter(x => !(x.getIdW1 == punto2 && x.getIdW2 == clusterPoint1))
-            }
-          }
-        }
-      } else {
-        if (linkageModel.isCluster(punto2)) {
-          val clusterPoints2 = linkageModel.giveMePoints(punto2)
-          for (clusterPoint2 <- clusterPoints2) {
-            //TODO quizás se pueda hacer filtrado de todos los puntos
-            if (clusterPoint2 < punto1) {
-              matrix = matrix.filter(x => !(x.getIdW1 == clusterPoint2 && x.getIdW2 == punto1))
-            } else {
-              matrix = matrix.filter(x => !(x.getIdW1 == punto1 && x.getIdW2 == clusterPoint2))
-            }
-          }
-        } else {
-          if (punto1 < punto2) {
-            matrix = matrix.filter(x => !(x.getIdW1 == punto1 && x.getIdW2 == punto2))
-          } else {
-            matrix = matrix.filter(x => !(x.getIdW1 == punto2 && x.getIdW2 == punto1))
-          }
-        }
-      }
-
-      matrix = matrix.filter(x => !(x.getIdW1 == punto1Aux && x.getIdW2 == punto2Aux))
-
-      a += 1
-      if (a % 2 == 0)
-        matrix.checkpoint()
-    }
-    linkageModel
+  // sort by dist
+  object DistOrdering extends Ordering[Distance] {
+    def compare(a: Distance, b: Distance) = a.getDist compare b.getDist
   }
 
   def runAlgorithm(distanceMatrix: RDD[Distance], numPoints: Int): LinkageModel = {
 
     var matrix = distanceMatrix
     val sc = distanceMatrix.sparkContext
-    val cont = sc.accumulator(numPoints)
+    val cont = sc.longAccumulator("My Accumulator")
+    cont.add(numPoints)
     val partitionNumber = distanceMatrix.getNumPartitions
 
     val linkageModel = new LinkageModel(scala.collection.mutable.Map[Long, Seq[(Int, Int)]]())
-
-    // sort by dist
-    object DistOrdering extends Ordering[Distance] {
-      def compare(a: Distance, b: Distance) = a.getDist compare b.getDist
-    }
 
     for (a <- 0 until (numPoints - numClusters)) {
       val start = System.nanoTime
 
       println("Finding minimum:")
-      val clustersRes = distanceStrategy match {
-        case "min" =>
-          //matrix.collect().foreach(println(_))
-          matrix.min()(DistOrdering)
+      //matrix.collect().foreach(println(_))
+      val clustersRes = matrix.min()(DistOrdering)
 
-        case "max" =>
-          //Calcula distancia
-          matrix.max()(DistOrdering)
-
-      }
       println(s"New minimum: $clustersRes")
 
       val punto1 = clustersRes.getIdW1
@@ -162,34 +57,55 @@ class Linkage(
 
       println("New Cluster: " + newIndex + ":" + punto1 + "-" + punto2)
 
+      //Se guarda en el modelo resultado
+      linkageModel.getClusters += newIndex -> Seq((punto1, punto2))
+
       //Si no es el ultimo cluster
       if (a < (numPoints - numClusters - 1)) {
-        //Se guarda en el modelo resultado
-        linkageModel.getClusters += newIndex -> Seq((punto1, punto2))
 
         //Se elimina el punto encontrado
         matrix = matrix.filter(x => !(x.getIdW1 == punto1 && x.getIdW2 == punto2)).repartition(partitionNumber).cache()
-        //println(matrix.collect().foreach(println(_)))
+
+        val rddPoints1 = matrix.filter(x => x.getIdW1 == punto1 || x.getIdW2 == punto1).repartition(partitionNumber).cache()
+        val rddPoints2 = matrix.filter(x => x.getIdW1 == punto2 || x.getIdW2 == punto2).repartition(partitionNumber).cache()
+        val rddUnionPoints = rddPoints1.union(rddPoints2)
+
+        val rddCartesianPoints = rddPoints1.cartesian(rddPoints2)
+        val rddFilteredPoints = rddCartesianPoints.filter(x => (x._1.getIdW2 == x._2.getIdW2) ||
+          (x._1.getIdW1 == x._2.getIdW1) ||
+          (x._1.getIdW1 == x._2.getIdW2 ||
+            (x._2.getIdW1 == x._1.getIdW2))).repartition(partitionNumber)
+        rddPoints1.unpersist()
+        rddPoints2.unpersist()
 
         //Se crea un nuevo punto siguiendo la estrategia
         matrix = distanceStrategy match {
           case "min" =>
-            val rddPoints1 = matrix.filter(_.getIdW1 == punto1).repartition(partitionNumber).cache()
-            val rddPoints2 = matrix.filter(_.getIdW1 == punto2).repartition(partitionNumber).cache()
-            val rddUnionPoints = rddPoints1.union(rddPoints2)
+            val newPoints = rddFilteredPoints.map(x => new Distance(newIndex.toInt, filterMatrix(x._1,clustersRes), math.min(x._1.getDist,x._2.getDist)))
+              .repartition(partitionNumber)
 
-            //Se comprueba cual de los dos RDD tienen más puntos
-            /*val newPoints = if (rddPoints1.count() < rddPoints2.count()) {
-              val listPoints2 = rddPoints2.map(x => (x.getIdW2, x.getDist)).collectAsMap()
-              rddPoints1.map(x => new Distance(newIndex.toInt, x.getIdW2, math.min(x.getDist, listPoints2(x.getIdW2))))
-            } else {
-              val listPoints1 = rddPoints1.map(x => (x.getIdW2, x.getDist)).collectAsMap()
-              rddPoints2.map(x => new Distance(newIndex.toInt, x.getIdW2, math.min(x.getDist, listPoints1(x.getIdW2))))
+            //Elimino los puntos completos
+            val matrixSub = matrix.subtract(rddUnionPoints).cache()
+
+            //Agrego los puntos con el nuevo indice
+            matrix = matrixSub.union(newPoints)
+
+            //val matrixSub2 = matrixSub.filter(x => x.getIdW2 == punto1 || x.getIdW2 == punto2).cache()
+            matrixSub.unpersist()
+
+            /*if (matrixSub2.countApprox(3000) != 0){
+              val matrixCartesian = matrixSub2.cartesian(matrixSub2)
+                .filter(x => x._1.getIdW1 == x._2.getIdW1 && x._1.getIdW2 < x._2.getIdW2)
+              val editedPoints = matrixCartesian.map(x => new Distance(x._1.getIdW1, newIndex.toInt, math.min(x._1.getDist, x._2.getDist)))
+              matrix = matrix.subtract(matrixSub2)
+                .union(editedPoints)
+              matrixSub2.unpersist()
             }*/
+            matrix
 
-            val matrixCartesian = rddPoints1.cartesian(rddPoints2)
-            val matr = matrixCartesian.filter(x => x._1.getIdW2 == x._2.getIdW2)
-            val newPoints = matr.map(x => new Distance(newIndex.toInt, x._2.getIdW2, math.min(x._1.getDist,x._2.getDist)))
+          case "max" =>
+            //Calcula distancia
+            val newPoints = rddFilteredPoints.map(x => new Distance(newIndex.toInt, filterMatrix(x._1,clustersRes), math.max(x._1.getDist,x._2.getDist)))
 
             //Elimino los puntos completos
             val matrixSub = matrix.subtract(rddUnionPoints)
@@ -206,16 +122,8 @@ class Linkage(
               val editedPoints = matrixCartesian.map(x => new Distance(x._1.getIdW1, newIndex.toInt, math.min(x._1.getDist, x._2.getDist)))
 
               matrix = matrix.subtract(matrixSub2).union(editedPoints).repartition(partitionNumber)
-
             }
-
             matrix
-
-
-          case "max" =>
-            //Calcula distancia
-            matrix
-
         }
         matrix.cache()
       }
@@ -229,8 +137,123 @@ class Linkage(
     linkageModel
   }
 
-}
+  def runAlgorithmDF(distanceMatrix: DataFrame, numPoints: Int, numPartitions: Int): LinkageModel ={
+    var matrix = distanceMatrix
+    val spark = distanceMatrix.sparkSession
+    import spark.implicits._
+    val cont = spark.sparkContext.longAccumulator("My Accumulator DF")
+    cont.add(numPoints)
 
+    val linkageModel = new LinkageModel(scala.collection.mutable.Map[Long, Seq[(Int, Int)]]())
+
+    for (a <- 0 until (numPoints - numClusters)) {
+      val start = System.nanoTime
+
+      println("Finding minimum:")
+      val minDistRes = matrix.select(min("dist")).first().getFloat(0)
+      val clusterRes = matrix.where($"dist" === minDistRes)
+//      val clsterRes = spark
+//        .sql("SELECT * from distances where dist =(SELECT MIN(dist) from distances)")
+//      println(s"New minimum:")
+//      clusterRes.show(1)
+
+      val point1 = clusterRes.first().getInt(0)
+      val point2 = clusterRes.first().getInt(1)
+
+      cont.add(1)
+      val newIndex = cont.value.toLong
+
+      println("New Cluster: " + newIndex + ":" + point1 + "-" + point2)
+
+      //Se guarda en el modelo el resultado
+      linkageModel.getClusters += newIndex -> Seq((point1, point2))
+
+      //Si no es el ultimo cluster
+      if (a < (numPoints - numClusters - 1)) {
+
+        //Se elimina el punto encontrado de la matrix original
+        val matrixFiltered = matrix.filter("!(idW1 == " + point1 +" and idW2 ==" + point2 + " )").repartition(numPartitions).persist()
+
+        val dfPoints1 = matrixFiltered.filter("idW1 == " + point1 + " or idW2 == " + point1).persist()
+
+//        //Renombramos las columnas para poder hacer un filtrado posterior
+//        val newColumnsNames = Seq("distPoints1", "idW1Points1", "idW2Points1")
+//        val dfPoints1Renamed = dfPoints1.toDF(newColumnsNames: _*)
+
+        val dfPoints2 = matrixFiltered.filter("idW1 == " + point2 + " or idW2 == " + point2).repartition(numPartitions).persist()
+
+        val dfUnionPoints = dfPoints1.union(dfPoints2)
+
+        //val dfCartesianPoints = dfPoints1Renamed.crossJoin(dfPoints2)
+
+//        val dfFilteredPoints = dfCartesianPoints.filter("(idW1Points1 == idW1) or (idW1Points1 == idW2) " +
+//          "or (idW2Points1 == idW1) or (idW2Points1 == idW2)")
+        //Elimino los puntos completos
+        val matrixSub = matrixFiltered.except(dfUnionPoints).repartition(numPartitions)
+
+        //Se crea un nuevo punto siguiendo la estrategia
+        matrix = distanceStrategy match {
+          case "min" =>
+//            val newPoints = dfFilteredPoints.map(r =>
+//              (math.min(r.getFloat(0),r.getFloat(3)),newIndex.toInt, filterDF(r.getInt(1),r.getInt(2), punto1, punto2)))
+            val dfPoints2Broadcast = spark.sparkContext.broadcast(dfPoints2)
+            val newPoints = dfPoints1.map{
+              r =>
+                val dist2 = dfPoints2Broadcast.value.where("idW1 == " + r.getInt(0) + " or idW1 == " + r.getInt(1)
+                  + " or idW2 == " + r.getInt(0) + " or idW2 == " + r.getInt(1)).repartition(numPartitions).first().getFloat(2)
+
+                (newIndex.toInt, filterDF(r.getInt(0),r.getInt(1), point1, point2), math.min(r.getFloat(2), dist2))
+            }.asInstanceOf[Dataset[Row]]
+
+            //Agrego los puntos con el nuevo indice
+//            val rows = newPoints.toDF().select("_1","_2","_3")
+            val matrixSub2 = matrixSub.union(newPoints)
+
+            //Borramos los datos de caché de todas las variables persistidas anteriormente
+            dfPoints2Broadcast.unpersist()
+            dfPoints2.unpersist()
+            dfPoints1.unpersist()
+            //            newPoints.unpersist()
+            matrixFiltered.unpersist()
+//            clusterRes.unpersist()
+
+            matrixSub2
+
+          case "max" =>
+            //Calcula distancia
+            matrix
+        }
+        matrix.persist()
+      }
+
+      val duration = (System.nanoTime - start) / 1e9d
+      println(s"TIME: $duration")
+    }
+    linkageModel
+  }
+
+  def filterMatrix(oldDistance: Distance, clusterReference: Distance): Int = {
+    var result = 0
+
+    if (oldDistance.getIdW1 == clusterReference.getIdW1 || oldDistance.getIdW1 == clusterReference.getIdW2){
+      result = oldDistance.getIdW2
+    }else if (oldDistance.getIdW2 == clusterReference.getIdW1 || oldDistance.getIdW2 == clusterReference.getIdW2){
+      result = oldDistance.getIdW1
+    }
+
+    result
+  }
+
+  def filterDF(idW1: Int, idW2: Int, pointReference1: Int, pointReference2: Int): Int = {
+    var result = idW1
+
+    if (idW1 == pointReference1 || idW1 == pointReference2){
+      result = idW2
+    }
+
+    result
+  }
+}
 
 object Linkage {
 

@@ -17,11 +17,12 @@ object MainReadFolder {
 
     sc.setCheckpointDir("checkpoints")
 
+    //val fileTest = "src/main/resources/Distances_full_dataset"
     val fileTest = "src/main/resources/distanceTest"
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
-    var numPartitions = 8 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
+    var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
     var numPoints = 9
     var numClusters = 1
     var strategyDistance = "min"
