@@ -45,31 +45,6 @@ object MainReadFolder {
         new Distance(x(0).toInt, x(1).toInt, x(2))
       }.filter(x => x.getIdW1 < x.getIdW2)
 
-//    val distances: RDD[Distance] = sc.parallelize(Seq(
-//      new Distance(1,2,2),
-//      new Distance(1,3,6),
-//      new Distance(1,4,50),
-//      new Distance(1,5,50),
-//      new Distance(1,6,50),
-//      new Distance(1,7,50),
-//      new Distance(2,3,50),
-//      new Distance(2,4,50),
-//      new Distance(2,5,8),
-//      new Distance(2,6,11),
-//      new Distance(2,7,50),
-//      new Distance(3,4,4),
-//      new Distance(3,5,50),
-//      new Distance(3,6,50),
-//      new Distance(3,7,50),
-//      new Distance(4,5,50),
-//      new Distance(4,6,50),
-//      new Distance(4,7,12),
-//      new Distance(5,6,50),
-//      new Distance(5,7,50),
-//      new Distance(6,7,10)
-//    ))
-
-
     val data = sc.parallelize(Cluster.createInitClusters(numPoints))
     println("Number of points: " + data.count())
 
@@ -79,7 +54,7 @@ object MainReadFolder {
 
     val model = linkage.runAlgorithm(distances, numPoints)
 
-    println("RESULTADO: ")
+    println("RESULT: ")
     model.printSchema(";")
 
     sc.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "Linkage-" + Utils.whatTimeIsIt())

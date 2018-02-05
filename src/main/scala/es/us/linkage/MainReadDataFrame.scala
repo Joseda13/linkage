@@ -10,6 +10,10 @@ object MainReadDataFrame {
       .master("local[*]")
       .getOrCreate()
 
+    spark.sparkContext.setCheckpointDir("checkpoints")
+//    spark.sqlContext.setConf("spark.sql.orc.filterPushdown", "true")
+//    spark.sqlContext.setConf("spark.sql.orc.filterPushdown", "true")
+
     val fileTest = "src/main/resources/distanceTest"
 //    val fileTest = "src/main/resources/Distances_full_dataset"
 
@@ -29,6 +33,7 @@ object MainReadDataFrame {
       strategyDistance = args(5)
     }
 
+    //Load data from csv
     val distancesDF = spark.read
       .option("header", "false")
       .option("inferSchema", "false")
@@ -42,8 +47,6 @@ object MainReadDataFrame {
       distancesDF("_c2").cast(FloatType).as("dist")
     ).filter("idW1 < idW2")
 
-//    distancesDFAux.repartition(numPartitions)
-
     println("Number of points: " + numPoints)
     //min,max,avg
     val linkage = new Linkage(numClusters, strategyDistance)
@@ -51,7 +54,7 @@ object MainReadDataFrame {
 
     val model = linkage.runAlgorithmDF(distancesDFAux, numPoints, numPartitions)
 
-    println("RESULTADO: ")
+    println("RESULT: ")
     model.printSchema(";")
 
     spark.sparkContext.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "LinkageDF-" + Utils.whatTimeIsIt())
