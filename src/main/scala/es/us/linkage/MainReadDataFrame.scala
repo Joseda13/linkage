@@ -7,21 +7,23 @@ object MainReadDataFrame {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
       .appName("LinkageDF")
-      .master("local[*]")
+//      .master("local[*]")
       .getOrCreate()
 
     spark.sparkContext.setCheckpointDir("checkpoints")
 //    spark.sqlContext.setConf("spark.sql.orc.filterPushdown", "true")
 //    spark.sqlContext.setConf("spark.sql.orc.filterPushdown", "true")
 
-    val fileTest = "src/main/resources/distanceTest"
-//    val fileTest = "src/main/resources/Distances_full_dataset"
+    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+    //    val fileTest = "B:\\Datasets\\distanceTest"
+
+//    val  fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 9
-    var numClusters = 1
+    var numPoints = 5800
+    var numClusters = 5790
     var strategyDistance = "min"
 
     if (args.length > 2) {
@@ -42,7 +44,7 @@ object MainReadDataFrame {
 
     //Casting
     val distancesDFAux = distancesDF.select(
-      distancesDF("_c0").cast(IntegerType).as("idW1"),
+      distancesDF("_c0").cast(IntegerType).as(" "),
       distancesDF("_c1").cast(IntegerType).as("idW2"),
       distancesDF("_c2").cast(FloatType).as("dist")
     ).filter("idW1 < idW2")

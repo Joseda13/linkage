@@ -1,30 +1,39 @@
 package es.us.linkage
 
-import org.apache.spark.rdd.RDD
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 
 object MainReadFolder {
   def main(args: Array[String]): Unit = {
+    val start = System.nanoTime
+    Logger.getLogger("org").setLevel(Level.OFF)
 
     val conf = new SparkConf()
       .setAppName("Linkage")
-    .setMaster("local[*]")
-    //.set("spark.driver.parallelism", "8")
-    //.set("spark.driver.maxResultSize", "0")
-    //.set("spark.executor.heartbeatInterval", "3000s")
+      .setMaster("local[*]")
+//        .set("spark.serializer", "KryoSerializer")
+//      .set("spark.kryo.registrationRequired", "true")
+//      .registerKryoClasses(Array(classOf[Distance]))
+//      .set("spark.files.fetchTimeout", "5min")
+//      .set("spark.memory.fraction", "0.7")
+//      .set("spark.reducer.maxSizeInFlight", "72mb")
+//      .set("spark.shuffle.file.buffer", "48k")
+//      .set("spark.rdd.compress", "true")
 
     val sc = new SparkContext(conf)
 
-    sc.setCheckpointDir("checkpoints")
+    sc.setCheckpointDir("B:\\checkpoints")
+//      sc.setCheckpointDir("checkpoints")
+    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+//    val fileTest = "B:\\Datasets\\distanceTest"
 
-    //val fileTest = "src/main/resources/Distances_full_dataset"
-    val fileTest = "src/main/resources/distanceTest"
+//    val  fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 9
-    var numClusters = 1
+    var numPoints = 5800
+    var numClusters = 5750
     var strategyDistance = "min"
 
     if (args.length > 2) {
@@ -36,14 +45,11 @@ object MainReadFolder {
       strategyDistance = args(5)
     }
 
-
-    //val partCustom = new HashPartitioner(numPartitions)
-
     val distances = sc.textFile(origen, numPartitions)
       .map(s => s.split(',').map(_.toFloat))
       .map { case x =>
         new Distance(x(0).toInt, x(1).toInt, x(2))
-      }.filter(x => x.getIdW1 < x.getIdW2)
+      }.filter(x => x.getIdW1 < x.getIdW2).repartition(numPartitions)
 
     val data = sc.parallelize(Cluster.createInitClusters(numPoints))
     println("Number of points: " + data.count())
@@ -58,6 +64,9 @@ object MainReadFolder {
     model.printSchema(";")
 
     sc.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "Linkage-" + Utils.whatTimeIsIt())
+
+    val duration = (System.nanoTime - start) / 1e9d
+    println(s"TIME TOTAL: $duration")
 
     sc.stop()
   }

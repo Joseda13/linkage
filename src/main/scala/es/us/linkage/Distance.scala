@@ -27,6 +27,7 @@ class Distance(private var idW1: Int, private var idW2: Int, private var dist: F
   }
 
   override def toString = s"Distance($getIdW1-$getIdW2=>$getDist)"
+//override def toString = s"$getIdW1,$getIdW2,$getDist"
 
   override def equals(that: Any) = {
     that match {
