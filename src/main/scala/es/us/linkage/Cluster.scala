@@ -1,5 +1,7 @@
 package es.us.linkage
 
+import org.apache.spark.rdd.RDD
+
 /**
   * Created by Josem on 15/11/2016.
   */

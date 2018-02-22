@@ -23,18 +23,17 @@ object MainReadFolder {
     val sc = new SparkContext(conf)
 
     sc.setCheckpointDir("B:\\checkpoints")
-//      sc.setCheckpointDir("checkpoints")
-    val fileTest = "B:\\Datasets\\Distances_full_dataset"
-//    val fileTest = "B:\\Datasets\\distanceTest"
+//    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+    val fileTest = "B:\\Datasets\\distanceTest"
 
 //    val  fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 5800
-    var numClusters = 5750
-    var strategyDistance = "min"
+    var numPoints = 9
+    var numClusters = 1
+    var strategyDistance = "avg"
 
     if (args.length > 2) {
       origen = args(0)
@@ -63,7 +62,7 @@ object MainReadFolder {
     println("RESULT: ")
     model.printSchema(";")
 
-    sc.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "Linkage-" + Utils.whatTimeIsIt())
+    model.saveSchema(destino)
 
     val duration = (System.nanoTime - start) / 1e9d
     println(s"TIME TOTAL: $duration")

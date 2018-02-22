@@ -54,12 +54,12 @@ object MainReadDataFrame {
     val linkage = new Linkage(numClusters, strategyDistance)
     println("New Linkage with strategy: " + strategyDistance)
 
-    val model = linkage.runAlgorithmDF(distancesDFAux, numPoints, numPartitions)
-
-    println("RESULT: ")
-    model.printSchema(";")
-
-    spark.sparkContext.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "LinkageDF-" + Utils.whatTimeIsIt())
+//    val model = linkage.runAlgorithmDF(distancesDFAux, numPoints, numPartitions)
+//
+//    println("RESULT: ")
+//    model.printSchema(";")
+//
+//    spark.sparkContext.parallelize(model.saveSchema).coalesce(1, shuffle = true).saveAsTextFile(destino + "LinkageDF-" + Utils.whatTimeIsIt())
 
     spark.stop()
   }
