@@ -7,14 +7,15 @@ object MainReadFolder {
   def main(args: Array[String]): Unit = {
     val start = System.nanoTime
     Logger.getLogger("org").setLevel(Level.OFF)
+    Logger.getLogger("akka").setLevel(Level.OFF)
 
     val conf = new SparkConf()
       .setAppName("Linkage")
       .setMaster("local[*]")
+      .set("spark.files.fetchTimeout", "5min")
 //        .set("spark.serializer", "KryoSerializer")
 //      .set("spark.kryo.registrationRequired", "true")
-//      .registerKryoClasses(Array(classOf[Distance]))
-//      .set("spark.files.fetchTimeout", "5min")
+//      .registerKryoClasses(Array(classOf[Distance])
 //      .set("spark.memory.fraction", "0.7")
 //      .set("spark.reducer.maxSizeInFlight", "72mb")
 //      .set("spark.shuffle.file.buffer", "48k")
@@ -23,15 +24,15 @@ object MainReadFolder {
     val sc = new SparkContext(conf)
 
     sc.setCheckpointDir("B:\\checkpoints")
-//    val fileTest = "B:\\Datasets\\Distances_full_dataset"
-    val fileTest = "B:\\Datasets\\distanceTest"
+    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+//    val fileTest = "B:\\Datasets\\distanceTest"
 
 //    val  fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 9
+    var numPoints = 5800
     var numClusters = 1
     var strategyDistance = "avg"
 
@@ -57,12 +58,30 @@ object MainReadFolder {
     val linkage = new Linkage(numClusters, strategyDistance)
     println("New Linkage with strategy: " + strategyDistance)
 
+//    linkage.runAlgorithmDendrogram(distances, numPoints, numClusters)
+//    val model = linkage.runAlgorithmWithResult(distances, numPoints)
+//    val clustering = model._1
+//    val result = model._2
+//
+//    println("SCHEMA RESULT: ")
+//    clustering.printSchema(";")
+//
+//    println("Saving schema: ")
+//    clustering.saveSchema(destino)
+//    println("--Saved schema--")
+//
+//    println("Saving cluster result:")
+//    clustering.saveResult(destino,result,numPoints,numClusters)
+//    println("--Saved cluster result--")
+
     val model = linkage.runAlgorithm(distances, numPoints)
 
-    println("RESULT: ")
+    println("SCHEMA RESULT: ")
     model.printSchema(";")
 
+    println("Saving schema: ")
     model.saveSchema(destino)
+    println("--Saved schema--")
 
     val duration = (System.nanoTime - start) / 1e9d
     println(s"TIME TOTAL: $duration")

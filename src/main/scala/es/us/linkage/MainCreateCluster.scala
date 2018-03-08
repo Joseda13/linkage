@@ -10,13 +10,17 @@ object MainCreateCluster {
 
     val conf = new SparkConf()
       .setAppName("Clustering")
-      .set("spark.files.fetchTimeout", "10min")
       .setMaster("local[*]")
+      .set("spark.files.fetchTimeout", "10min")
 
     val sc = new SparkContext(conf)
 
+    sc.setCheckpointDir("B:\\checkpoints")
+
 //        val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-FULL(AVG)\\part-00000"
     val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201802190936Linkage-201802190936\\part-00000"
+
+//    val fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
@@ -36,10 +40,12 @@ object MainCreateCluster {
       .map(s => s.split(',').map(_.toInt))
       .map{
         case x => (x(0).toLong, (x(1), x(2)))
-      }
+      }.repartition(numPartitions)
 
-    val totalPoints = sc.parallelize(1 to numPoints).repartition(numPartitions)
+    //Inicializamos un RDD desde 1 hasta el número de puntos que tenga nuestra base de datos
+    val totalPoints = sc.parallelize(1 to numPoints).cache()
 
+    //Creamos un modelo a partir del clustering establecido en el fichero de origen
     val model = new LinkageModel(clusters)
 
     try {
@@ -51,7 +57,7 @@ object MainCreateCluster {
     }
 
     val duration = (System.nanoTime - start) / 1e9d
-    println(s"TIME: $duration")
+    println(s"TIME TOTAL: $duration")
 
     sc.stop()
   }
