@@ -3,6 +3,10 @@ package es.us.linkage
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 
+/**
+  * Created by Jose David on 20/02/2018.
+  */
+
 object MainCreateCluster {
   def main(args: Array[String]): Unit = {
     val start = System.nanoTime
@@ -17,16 +21,18 @@ object MainCreateCluster {
 
     sc.setCheckpointDir("B:\\checkpoints")
 
-//        val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-FULL(AVG)\\part-00000"
-    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201802190936Linkage-201802190936\\part-00000"
-
+//        val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-EMPLEO-FULL(AVG)\\part-00000"
+//    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201802190936Linkage-201802190936\\part-00000"
+//    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-IRIS-FULL(AVG)\\part-00000"
+//    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-GLASS-FULL(AVG)\\part-00000"
+    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201803091138Linkage-201803091138\\part-00000"
 //    val fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 9
-    var numClusters = 3
+    var numPoints = 10
+    var numClusters = 2
 
     if (args.length > 2) {
       origen = args(0)
@@ -40,12 +46,12 @@ object MainCreateCluster {
       .map(s => s.split(',').map(_.toInt))
       .map{
         case x => (x(0).toLong, (x(1), x(2)))
-      }.repartition(numPartitions)
+      }
 
-    //Inicializamos un RDD desde 1 hasta el número de puntos que tenga nuestra base de datos
+    //Initialize an RDD from 1 to the number of points in our database
     val totalPoints = sc.parallelize(1 to numPoints).cache()
 
-    //Creamos un modelo a partir del clustering establecido en el fichero de origen
+    //We create a model based on the clustering established in the source file
     val model = new LinkageModel(clusters)
 
     try {

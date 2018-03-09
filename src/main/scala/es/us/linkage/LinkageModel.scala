@@ -2,35 +2,13 @@ package es.us.linkage
 
 import org.apache.spark.rdd.RDD
 
+/**
+  * Created by Jose David on 15/01/2018.
+  */
+
 class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
 
-    def clusters = _clusters
-//  var clusters = _clusters
-
-//  def addClusters(newClusters: RDD[(Long, (Int, Int))]) = {
-//    clusters = clusters.union(newClusters)
-//  }
-
-
-  //Devuelve el cluster al que pertenece el punto, o el punto en el caso en que no esté
-  //  def getRealPoint(point: Int): Int = {
-  //    var res = point
-  //    var auxPoint = point
-  //    var found = false
-  //    val default = (-1, "")
-  //    while (!found) {
-  //      val aux = this.clusters
-  //        .find(x => (x._2.head._1 == res || x._2.head._2 == res))
-  //        .getOrElse(default)._1
-  //        .asInstanceOf[Number].intValue()
-  //      if (aux == -1) {
-  //        found = true
-  //      } else {
-  //        res = aux
-  //      }
-  //    }
-  //    res
-  //  }
+  def clusters = _clusters
 
   def isCluster(point: Int): Boolean = {
     clusters.countByKey().contains(point.toLong)
@@ -40,28 +18,28 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
     point > totalPoints
   }
 
-  //Dado un punto de un cluster, devuelve todos los puntos de ese cluster
-//  def giveMePoints(point: Int): List[Int] = {
-//    var res = List[Int]()
-//    val aux = clusters.lookup(point.toLong).head // valor de una Key(point)
-//    if (isCluster(aux._1)) {
-//      res = res ::: giveMePoints(aux._1)
-//      if (isCluster(aux._2)) {
-//        res = res ::: giveMePoints(aux._2)
-//      } else {
-//        res = res ::: List(aux._2)
-//      }
-//    } else {
-//      if (isCluster(aux._2)) {
-//        res = res ::: giveMePoints(aux._2)
-//        res = res ::: List(aux._1)
-//      } else {
-//        res = res ::: List(aux._1, aux._2)
-//      }
-//    }
-//
-//    res
-//  }
+  //Given a point in a cluster, return all points of that cluster
+  def giveMePoints(point: Int): List[Int] = {
+    var res = List[Int]()
+    val aux = clusters.lookup(point.toLong).head // valor de una Key(point)
+    if (isCluster(aux._1)) {
+      res = res ::: giveMePoints(aux._1)
+      if (isCluster(aux._2)) {
+        res = res ::: giveMePoints(aux._2)
+      } else {
+        res = res ::: List(aux._2)
+      }
+    } else {
+      if (isCluster(aux._2)) {
+        res = res ::: giveMePoints(aux._2)
+        res = res ::: List(aux._1)
+      } else {
+        res = res ::: List(aux._1, aux._2)
+      }
+    }
+
+    res
+  }
 
   def giveMePoints(point: Int, numberPoints: Int): Array[(Int,Int)] = {
     var rest = new Array[(Int,Int)](numberPoints*2)
@@ -181,27 +159,26 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
 
     val sc = totalPoints.sparkContext
 
-    //Filtramos el total de clusters estableciendo un límite inferior y superior en función del número de puntos y del nivel en el que queremos parar
+    //We filter the total of clusters establishing a lower and upper limit depending on the number of points and the level at which we want to stop
     val minCluster = points + 1
     val topCluster = clusters.count()
 
     val clustersFiltered = clusters.filterByRange(minCluster, minCluster + (topCluster - numCluster)).sortByKey().cache()
 
-    //Generamos un RDD auxiliar para iniciar cada cluster en cada punto
+    //We generate an auxiliary RDD to start each cluster at each point
     var auxPoints = totalPoints.map(value => (value,value))
-    val cont = sc.longAccumulator("My Accumulator")
-    cont.add(0)
+    var a = 0
 
-    //Recorremos cada fila del fichero de clusters filtrado
+    //We go through each row of the filtered cluster file
     for (iter <- clustersFiltered.collect()){
       val start = System.nanoTime
 
-      //Guardamos en variables auxiliares los elementos de cada fila para poder hacer filtrados posteriores
+      //We save the elements of each row in auxiliary variables to be able to filter later
       val point1 = iter._2._1
       val point2 = iter._2._2
       val cluster = iter._1.toInt
 
-      //Recorremos el RDD auxiliar y comprobamos si en esta iteración es necesario cambiar el cluster al que pertenece cada punto
+      //We go through the auxiliary RDD and check if in this iteration it is necessary to change the cluster to which each point belongs
       auxPoints = auxPoints.map {value =>
         var auxValue = value
         if(value._2 == point1 || value._2 == point2){
@@ -211,17 +188,17 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
       }
 
       val duration = (System.nanoTime - start) / 1e9d
-      println(s"TIME: $duration")
-      cont.add(1)
+      println(s"TIME ITERATION: $duration")
+      a = a + 1
 
-      //Cada doscientas iteraciones hacemos un checkpoint para que la memoria no desborde
-      if(cont.toString().toInt % 200 == 0){
+      //Every two hundred iterations we make a checkpoint so that the memory does not overflow
+      if(a % 200 == 0){
         auxPoints.checkpoint()
         auxPoints.count()
       }
     }
 
-    //Guardamos en un archivo externo el resultado del clustering
+    //We save the result of clustering in an external file
     auxPoints
       .map(_.toString().replace("(", "").replace(")", ""))
       .coalesce(1, shuffle = true)

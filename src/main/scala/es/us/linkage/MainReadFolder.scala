@@ -3,6 +3,10 @@ package es.us.linkage
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 
+/**
+  * Created by Jose David on 15/01/2018.
+  */
+
 object MainReadFolder {
   def main(args: Array[String]): Unit = {
     val start = System.nanoTime
@@ -13,18 +17,13 @@ object MainReadFolder {
       .setAppName("Linkage")
       .setMaster("local[*]")
       .set("spark.files.fetchTimeout", "5min")
-//        .set("spark.serializer", "KryoSerializer")
-//      .set("spark.kryo.registrationRequired", "true")
-//      .registerKryoClasses(Array(classOf[Distance])
-//      .set("spark.memory.fraction", "0.7")
-//      .set("spark.reducer.maxSizeInFlight", "72mb")
-//      .set("spark.shuffle.file.buffer", "48k")
-//      .set("spark.rdd.compress", "true")
 
     val sc = new SparkContext(conf)
 
     sc.setCheckpointDir("B:\\checkpoints")
-    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+//    val fileTest = "B:\\Datasets\\Distances_full_dataset"
+//    val fileTest = "B:\\Datasets\\irisDistances"
+    val fileTest = "B:\\Datasets\\glass_10Distances"
 //    val fileTest = "B:\\Datasets\\distanceTest"
 
 //    val  fileTest = ""
@@ -32,7 +31,7 @@ object MainReadFolder {
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 5800
+    var numPoints = 10
     var numClusters = 1
     var strategyDistance = "avg"
 
@@ -58,7 +57,7 @@ object MainReadFolder {
     val linkage = new Linkage(numClusters, strategyDistance)
     println("New Linkage with strategy: " + strategyDistance)
 
-//    linkage.runAlgorithmDendrogram(distances, numPoints, numClusters)
+    linkage.runAlgorithmDendrogram(distances, numPoints, numClusters)
 //    val model = linkage.runAlgorithmWithResult(distances, numPoints)
 //    val clustering = model._1
 //    val result = model._2
