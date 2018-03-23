@@ -22,15 +22,15 @@ object MainDataFrameDistance {
 
     import spark.implicits._
 
-//    val fileTest = "B:\\Datasets\\irisData.txt"
-    val fileTest = "B:\\Datasets\\glassData_10.txt"
+    val fileTest = "B:\\Datasets\\irisData.txt"
+//    val fileTest = "B:\\Datasets\\glassData_10.txt"
 
     var origen: String = fileTest
-    var dataName: String = "glass_10"
+    var dataName: String = "iris"
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
     var typDataSet = 1
     var idIndex = "_c0"
-    var classIndex = "_c9"
+    var classIndex = "_c4"
     var distanceMethod = "Euclidean"
 
     if (args.length > 2) {
@@ -71,11 +71,20 @@ object MainDataFrameDistance {
       case 2 =>
         dataDF.drop(idIndex,classIndex).map(_.toSeq.asInstanceOf[Seq[Double]])
     }
-
+dataDFFiltered.rdd.coalesce(1, shuffle = true)
+  .saveAsTextFile(dataName + "Points")
     println("---Data filtered---")
 
     //We automatically generate an index for each row
     val dataAux = dataDFFiltered.withColumn("index", monotonically_increasing_id()+1)
+
+    //Save dataAux for futures uses
+    dataAux.map(row => (row.getLong(1), row.getSeq[Double](0).toList))
+      .rdd
+      .sortByKey()
+      .map(_.toString().replace("(", "").replace("))", ")").replace("List", "(").replace(",(", ";("))
+      .coalesce(1, shuffle = true)
+      .saveAsTextFile(dataName + "Coordinates")
 
     //Rename the columns and generate a new DataFrame copy of the previous to be able to do the subsequent filtered out in the join
     val newColumnsNames = Seq("valueAux", "indexAux")

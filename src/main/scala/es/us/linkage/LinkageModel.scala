@@ -1,14 +1,23 @@
 package es.us.linkage
 
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
 
 /**
   * Created by Jose David on 15/01/2018.
   */
 
-class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
+class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Array[Vector]) extends Serializable {
 
   def clusters = _clusters
+
+  def clusterCenters = _clusterCenters
+
+  def setClusterCenters(centroids: Array[Vector]) = {
+    _clusterCenters = centroids
+  }
 
   def isCluster(point: Int): Boolean = {
     clusters.countByKey().contains(point.toLong)
@@ -155,7 +164,7 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
       .saveAsTextFile(destino + "Points-" + numPoints + "-Clusters-" + numCluster)
   }
 
-  def createClusters(destino: String, points: Int, numCluster: Int, totalPoints: RDD[Int]) = {
+  def createClusters(destino: String, points: Int, numCluster: Int, totalPoints: RDD[Int]): RDD[(Int, Int)] = {
 
     val sc = totalPoints.sparkContext
 
@@ -198,10 +207,91 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))]) extends Serializable {
       }
     }
 
-    //We save the result of clustering in an external file
+    //Return the result of clustering
     auxPoints
-      .map(_.toString().replace("(", "").replace(")", ""))
-      .coalesce(1, shuffle = true)
-      .saveAsTextFile(destino + "Points-" + points + "-Clusters-" + numCluster)
   }
+
+  def inicializeCenters(coordinates: RDD[(Int, Vector)], numClusters: Int, numPoints: Int, resultPoints: RDD[(Int, Int)]): Array[Vector] = {
+
+    val sc = resultPoints.sparkContext
+    var auxVectors = sc.emptyRDD[Vector]
+
+    var rest = Array[Vector]()
+
+    for (iter <- resultPoints.map(row => row._2).distinct().collect()){
+
+      for(point <- resultPoints.filter(id => id._2 == iter).map(value => value._1).collect()){
+        auxVectors = auxVectors.union(coordinates.filter(id => id._1 == point).map(value => value._2))
+      }
+
+      val summary: MultivariateStatisticalSummary = Statistics.colStats(auxVectors)
+      rest = rest :+ summary.mean
+
+    }
+
+    rest
+
+  }
+
+  def computeCost(points: RDD[Vector]): Double = {
+
+    var rest = 0.0
+
+      for (p <- points.collect()){
+        rest += pointCost(clusterCenters, p)
+      }
+
+    rest
+
+  }
+
+  def pointCost(centroids: Array[Vector], vector: Vector): Double = {
+    var cost = Array[Double]()
+
+    var coor = 0
+    var costVector = 0.0
+    val sizeVector = vector.size
+
+    for (center <- centroids){
+
+      while (coor < sizeVector){
+        val dist = Math.abs(vector.apply(coor) - center.apply(coor))
+        costVector += (dist*dist)
+        coor += 1
+      }
+
+      cost = cost :+ costVector
+    }
+
+    cost.min
+  }
+
+  def predict(point: Vector): Int = {
+
+    var dist = 10000000000000000000.0
+    var coor = 0
+    val sizeVector = point.size
+    var centerPoint = point
+
+
+    for (center <- clusterCenters){
+      var distAux = 0.0
+
+      while (coor < sizeVector){
+          distAux = Math.abs(point.apply(coor) - center.apply(coor))
+          distAux += (distAux*distAux)
+          coor += 1
+        }
+
+      if (dist > distAux) {
+        dist = distAux
+        centerPoint = center
+      }
+
+    }
+
+    clusterCenters.indexOf(centerPoint)
+
+  }
+
 }

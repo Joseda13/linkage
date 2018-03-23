@@ -132,7 +132,7 @@ class Linkage(
     }
 
     //Return a new LinkageModel based into the model
-    (new LinkageModel(sc.parallelize(linkageModel.toSeq)))
+    (new LinkageModel(sc.parallelize(linkageModel.toSeq), sc.emptyRDD[Vector].collect()))
 
   }
 
@@ -257,7 +257,7 @@ class Linkage(
     }
 
     //Return a new LinkageModel based into the model and the RDD with point and cluster final
-    (new LinkageModel(sc.parallelize(linkageModel.toSeq)), totalPoints)
+    (new LinkageModel(sc.parallelize(linkageModel.toSeq), sc.emptyRDD[Vector].collect()), totalPoints)
 
   }
 
@@ -272,9 +272,9 @@ class Linkage(
     val cont = sc.longAccumulator("My Accumulator")
     cont.add(numPoints)
 
-    //Create a Map to save the cluster and points obtained in each iteration and a new LinkageModel based into these model
-    val linkageModel = scala.collection.mutable.Map[Long, (Int, Int)]()
-    var auxLinkageModel = new LinkageModel(sc.parallelize(linkageModel.toSeq))
+    //Create an initialized RDD with all the points having as a cluster itself
+    val auxPoints = sc.parallelize(1 to numPoints)
+    var totalPoints = auxPoints.map(value => (value,value)).cache()
 
     //Create a empty RDD to save the model for print a Dendogram
     var model = sc.emptyRDD[(Double,Double,Double,Double)]
@@ -296,13 +296,21 @@ class Linkage(
 
       println("New Cluster: " + newIndex + ":" + point1 + "-" + point2)
 
-      //The new cluster is saved in the result model
-      linkageModel += newIndex.toLong -> (point1, point2)
+      //Update the RDD that shows in which cluster each point is in each iteration
+      totalPoints = totalPoints.map {value =>
+        var auxValue = value
+        if(value._2 == point1 || value._2 == point2){
+          auxValue = (value._1, newIndex.toInt)
+        }
+        auxValue
+      }.cache()
 
-      //Update the model
-      auxLinkageModel = new LinkageModel(sc.parallelize(linkageModel.toSeq))
+      //Count the number of points from the new cluster
+      val contPoints = totalPoints.filter(id => id._2 == newIndex).count()
+
+      //Update the model with the schema
       model = model.union(sc.parallelize(Seq((point1.toDouble,point2.toDouble,dist.toDouble,
-        auxLinkageModel.giveMePointsRDD(newIndex,numPoints).count().toDouble))))
+        contPoints.toDouble))))
 
       //If it isn´t the last cluster
       if (a < (numPoints - numClusters - 1)) {
@@ -358,10 +366,17 @@ class Linkage(
 
       //The distance matrix is ​​persisted to improve the performance of the algorithm
       matrix = matrix.coalesce(partitionNumber / 2).persist(StorageLevel.MEMORY_ONLY_2)
+      totalPoints = totalPoints.coalesce(partitionNumber / 2).persist(StorageLevel.DISK_ONLY_2)
+      model = model.coalesce(partitionNumber / 2).persist(StorageLevel.DISK_ONLY_2)
 
       //Every 5 iterations a checkpoint of the distance matrix is ​​done to improve the performance of the algorithm
       if (a % 5 == 0) {
         matrix.checkpoint()
+      }
+
+      if (a % 200 == 0) {
+        model.checkpoint()
+        totalPoints.checkpoint()
       }
 
       //Show the duration of each iteration
@@ -378,7 +393,7 @@ class Linkage(
 
   }
 
-    def runAlgorithmDF(distanceMatrix: DataFrame, numPoints: Int, numPartitions: Int): LinkageModel ={
+  def runAlgorithmDF(distanceMatrix: DataFrame, numPoints: Int, numPartitions: Int): LinkageModel ={
 
       //Save in a variable the matrix of distances and the sparkSession for future uses
       var matrix = distanceMatrix
@@ -463,7 +478,7 @@ class Linkage(
       }
 
       //Return a new LinkageModel based into the model
-      new LinkageModel (distanceMatrix.sparkSession.sparkContext.parallelize(linkageModel.toSeq))
+    (new LinkageModel(spark.sparkContext.parallelize(linkageModel.toSeq), spark.sparkContext.emptyRDD[Vector].collect()))
     }
 
   def filterMatrix(oldDistance: Distance, clusterReference: Distance): Int = {

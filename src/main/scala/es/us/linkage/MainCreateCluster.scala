@@ -2,6 +2,7 @@ package es.us.linkage
 
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
 
 /**
   * Created by Jose David on 20/02/2018.
@@ -23,16 +24,16 @@ object MainCreateCluster {
 
 //        val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-EMPLEO-FULL(AVG)\\part-00000"
 //    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201802190936Linkage-201802190936\\part-00000"
-//    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-IRIS-FULL(AVG)\\part-00000"
+    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-IRIS-FULL(AVG)\\part-00000"
 //    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\Linkage-GLASS-FULL(AVG)\\part-00000"
-    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201803091138Linkage-201803091138\\part-00000"
+//    val fileTest = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\201803091138Linkage-201803091138\\part-00000"
 //    val fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 10
-    var numClusters = 2
+    var numPoints = 150
+    var numClusters = 3
 
     if (args.length > 2) {
       origen = args(0)
@@ -52,10 +53,28 @@ object MainCreateCluster {
     val totalPoints = sc.parallelize(1 to numPoints).cache()
 
     //We create a model based on the clustering established in the source file
-    val model = new LinkageModel(clusters)
+    val model = new LinkageModel(clusters,sc.emptyRDD[Vector].collect())
+
+    val orig = "C:\\Users\\Jose David\\IdeaProjects\\linkage\\irisCoordinates\\irisPoints"
+
+    val coordinates = sc.textFile(orig)
+      .map(s => s.split(";"))
+      .map(row => (row(0).toInt, Vectors.dense(row(1).replace("(", "").replace(")", "").split(",").map(_.toDouble))))
+
+    val resultPoints = model.createClusters(destino, numPoints, numClusters, totalPoints)
+    val centroids = model.inicializeCenters(coordinates, numClusters, numPoints, resultPoints)
+
+    model.setClusterCenters(centroids)
 
     try {
-      model.createClusters(destino, numPoints, numClusters, totalPoints)
+
+      val testComputeCost = model.computeCost(coordinates.map(point => point._2))
+
+      val testPredict = model.predict(coordinates.first()._2)
+
+//      println(testComputeCost)
+
+//      model.saveResult(destino, clusters, numPoints, numClusters)
       println("OK")
     }
     catch {
