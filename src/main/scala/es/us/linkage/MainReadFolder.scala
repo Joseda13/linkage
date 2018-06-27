@@ -16,22 +16,32 @@ object MainReadFolder {
     val conf = new SparkConf()
       .setAppName("Linkage")
       .setMaster("local[*]")
-      .set("spark.files.fetchTimeout", "10min")
+//      .set("spark.files.fetchTimeout", "10min")
+//      .set("spark.executor.instances", "19")
+//      .set("spark.yarn.executor.memoryOverhead", "1024")
+//      .set("spark.executor.memory", "4G")
+//      .set("spark.yarn.driver.memoryOverhead", "1024")
+//      .set("spark.driver.memory", "4G")
+//      .set("spark.executor.cores", "3")
+//      .set("spark.driver.cores", "3")
+//      .set("spark.default.parallelism", "114")
 
     val sc = new SparkContext(conf)
 
-    sc.setCheckpointDir("B:\\checkpoints")
+    sc.setCheckpointDir("")
 //    val fileTest = "B:\\Datasets\\Distances_full_dataset"
-    val fileTest = "B:\\Datasets\\irisDistances"
-//    val fileTest = "B:\\Datasets\\glass_10Distances"
+//    val fileTest = "B:\\Datasets\\irisDistances"
+//    val fileTest = "https://s3-eu-west-1.amazonaws.com/us-linkage/Datasets/C5-D20-I1000.csv"
+//    val fileTest = "B:\\Datasets\\C3-D20-I1000"
+    //    val fileTest = "B:\\Datasets\\glass_10Distances"
 //    val fileTest = "B:\\Datasets\\distanceTest"
 
-//    val  fileTest = ""
+    val  fileTest = ""
 
     var origen: String = fileTest
     var destino: String = Utils.whatTimeIsIt()
     var numPartitions = 16 // cluster has 25 nodes with 4 cores. You therefore need 4 x 25 = 100 partitions.
-    var numPoints = 150
+    var numPoints = 5000
     var numClusters = 1
     var strategyDistance = "avg"
 

@@ -61,10 +61,10 @@ object MainCreateCluster {
       .map(s => s.split(";"))
       .map(row => (row(0).toInt, Vectors.dense(row(1).replace("(", "").replace(")", "").split(",").map(_.toDouble))))
 
-    val resultPoints = model.createClusters(destino, numPoints, numClusters, totalPoints)
-    val centroids = model.inicializeCenters(coordinates, numClusters, numPoints, resultPoints)
+//    val resultPoints = model.createClusters(destino, numPoints, numClusters, totalPoints)
+//    val centroids = model.inicializeCenters(coordinates, numClusters, numPoints, resultPoints)
 
-    model.setClusterCenters(centroids)
+//    model.setClusterCenters(centroids)
 
     try {
 

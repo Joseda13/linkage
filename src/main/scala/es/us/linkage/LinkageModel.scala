@@ -1,6 +1,7 @@
 package es.us.linkage
 
 import org.apache.spark.SparkContext
+import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.linalg.{Vector, Vectors}
 import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
@@ -9,7 +10,7 @@ import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
   * Created by Jose David on 15/01/2018.
   */
 
-class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Array[Vector]) extends Serializable {
+class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Array[Vector]) extends Serializable with Logging {
 
   def clusters = _clusters
 
@@ -27,7 +28,13 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
     point > totalPoints
   }
 
-  //Given a point in a cluster, return all points of that cluster
+  /**
+    * Return all points of a cluster
+    *
+    * @param point A cluster point
+    * @return A List composed by the points of the cluster
+    * @example giveMePoints(151)
+    */
   def giveMePoints(point: Int): List[Int] = {
     var res = List[Int]()
     val aux = clusters.lookup(point.toLong).head // valor de una Key(point)
@@ -50,26 +57,34 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
     res
   }
 
-  def giveMePoints(point: Int, numberPoints: Int): Array[(Int,Int)] = {
-    var rest = new Array[(Int,Int)](numberPoints*2)
+  /**
+    * Return all points of a cluster
+    *
+    * @param point        A cluster point
+    * @param numberPoints The number of points to the dataset
+    * @return A array composed by the points of the cluster
+    * @example giveMePoints(151, 150)
+    */
+  def giveMePoints(point: Int, numberPoints: Int): Array[(Int, Int)] = {
+    var rest = new Array[(Int, Int)](numberPoints * 2)
     val aux = clusters.lookup(point.toLong).head
     val cont = clusters.sparkContext.longAccumulator("Accumulator Points")
     cont.add(0)
     if (isCluster(aux._1)) {
-      rest :+ giveMePoints(aux._1,numberPoints)
+      rest :+ giveMePoints(aux._1, numberPoints)
       if (isCluster(aux._2)) {
-        rest :+ giveMePoints(aux._2,numberPoints)
+        rest :+ giveMePoints(aux._2, numberPoints)
       } else {
-        rest(cont.value.toInt) = (aux._2,point)
+        rest(cont.value.toInt) = (aux._2, point)
       }
     } else {
       if (isCluster(aux._2)) {
-        rest :+ giveMePoints(aux._2,numberPoints)
-        rest(cont.value.toInt) = (aux._1,point)
+        rest :+ giveMePoints(aux._2, numberPoints)
+        rest(cont.value.toInt) = (aux._1, point)
       } else {
-        rest(cont.value.toInt) = (aux._1,point)
+        rest(cont.value.toInt) = (aux._1, point)
         cont.add(1)
-        rest(cont.value.toInt) = (aux._2,point)
+        rest(cont.value.toInt) = (aux._2, point)
         cont.add(1)
       }
     }
@@ -77,38 +92,55 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
     rest
   }
 
-  def giveMePointsRDD(cluster: Int, numberPoints: Int): RDD[(Int,Int)] = {
+  /**
+    * Return all points of a cluster
+    *
+    * @param cluster      A cluster point
+    * @param numberPoints The number of points to the dataset
+    * @return A RDD composed by the points of the cluster
+    * @example giveMePointsRDD(151, 150)
+    */
+  def giveMePointsRDD(cluster: Int, numberPoints: Int): RDD[(Int, Int)] = {
 
     val aux = clusters.lookup(cluster.toLong).head
-    var rest = clusters.sparkContext.emptyRDD[(Int,Int)]
+    var rest = clusters.sparkContext.emptyRDD[(Int, Int)]
 
-    if(isCluster(aux._1,numberPoints)){
-      rest = rest.union(giveMePointsRDD(aux._1,numberPoints))
-      if(isCluster(aux._2,numberPoints)){
-        rest = rest.union(giveMePointsRDD(aux._2,numberPoints))
-      }else {
-        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._2,cluster))))
+    if (isCluster(aux._1, numberPoints)) {
+      rest = rest.union(giveMePointsRDD(aux._1, numberPoints))
+      if (isCluster(aux._2, numberPoints)) {
+        rest = rest.union(giveMePointsRDD(aux._2, numberPoints))
+      } else {
+        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._2, cluster))))
       }
     } else {
-      if(isCluster(aux._2,numberPoints)){
-        rest = rest.union(giveMePointsRDD(aux._2,numberPoints))
-      }else {
-        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._1,cluster))))
-        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._2,cluster))))
+      if (isCluster(aux._2, numberPoints)) {
+        rest = rest.union(giveMePointsRDD(aux._2, numberPoints))
+      } else {
+        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._1, cluster))))
+        rest = rest.union(clusters.sparkContext.parallelize(Seq((aux._2, cluster))))
       }
     }
 
-    rest.sortByKey().filter(value => value._1 > 0).map(x => (x._1,cluster))
+    rest.sortByKey().filter(value => value._1 > 0).map(x => (x._1, cluster))
 
   }
 
-  def giveMeCluster(point: Int, totalPoints: Int, clusterBase: RDD[(Int, Int)]): Int = {
+  /**
+    * Return a cluster given a point
+    *
+    * @param point        A point of the dataset
+    * @param numberPoints The number of points to the dataset
+    * @param clusterBase  A RDD with all points of the dataset and its cluster
+    * @return A cluster
+    * @example giveMeCluster(151, 150, clusterBase)
+    */
+  def giveMeCluster(point: Int, numberPoints: Int, clusterBase: RDD[(Int, Int)]): Int = {
     var rest = point
     if (clusterBase.count() != 0) {
       var pointResult = clusterBase.filter(x => x._1 >= point).map {
         case (x, y) =>
           var auxPoint = point
-          if (!isCluster(point, totalPoints)) {
+          if (!isCluster(point, numberPoints)) {
             if (x == point) {
               auxPoint = y
             }
@@ -118,8 +150,8 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
           auxPoint
       }.distinct().max()
 
-      if (isCluster(pointResult, totalPoints) && pointResult != point) {
-        pointResult = giveMeCluster(pointResult, totalPoints, clusterBase.filter(x => x._1 >= pointResult))
+      if (isCluster(pointResult, numberPoints) && pointResult != point) {
+        pointResult = giveMeCluster(pointResult, numberPoints, clusterBase.filter(x => x._1 >= pointResult))
       }
 
       rest = pointResult
@@ -142,7 +174,14 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
       .mkString(separator))
   }
 
-  def saveSchema(destino: String) = {
+  /**
+    * Save the model schema in a external file
+    *
+    * @param destination Path to save the file
+    * @return Nothing
+    * @example saveSchema("Test")
+    */
+  def saveSchema(destination: String) = {
     clusters
       .sortBy(_._1)
       .map(x => s"${
@@ -153,34 +192,51 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
         x._2._2
       }")
       .coalesce(1, shuffle = true)
-      .saveAsTextFile(destino + "Linkage-" + Utils.whatTimeIsIt())
+      .saveAsTextFile(destination + "Linkage-" + Utils.whatTimeIsIt())
   }
 
-  def saveResult(destino: String, resultPoints: RDD[(Int,Int)], numPoints: Int, numCluster: Int) = {
+  /**
+    * Save in a external file all points and its cluster number
+    *
+    * @param destination  Path to save the file
+    * @param resultPoints A RDD with all points and its cluster number
+    * @param numPoints    The number of points on the dataset
+    * @param numCluster   The number of the clusters
+    * @return Nothing
+    * @example saveResult("Test", resultPoints, 150, 3)
+    */
+  def saveResult(destination: String, resultPoints: RDD[(Int, Int)], numPoints: Int, numCluster: Int) = {
     resultPoints
       .sortByKey()
       .map(_.toString().replace("(", "").replace(")", ""))
       .coalesce(1, shuffle = true)
-      .saveAsTextFile(destino + "Points-" + numPoints + "-Clusters-" + numCluster)
+      .saveAsTextFile(destination + "Points-" + numPoints + "-Clusters-" + numCluster)
   }
 
-  def createClusters(destino: String, points: Int, numCluster: Int, totalPoints: RDD[Int]): RDD[(Int, Int)] = {
-
-    val sc = totalPoints.sparkContext
+  /**
+    * Create a RDD with all points and its cluster number
+    *
+    * @param numPoints   The number of points on the dataset
+    * @param numCluster  The number of the clusters
+    * @param totalPoints A RDD with all points on the dataset
+    * @return A RDD with point and cluster in each row
+    * @example createClusters(150, 3, totalPoints)
+    */
+  def createClusters(numPoints: Int, numCluster: Int, totalPoints: RDD[Int]): RDD[(Int, Int)] = {
+    val start = System.nanoTime
 
     //We filter the total of clusters establishing a lower and upper limit depending on the number of points and the level at which we want to stop
-    val minCluster = points + 1
-    val topCluster = clusters.count()
+    val minCluster = numPoints + 1
+    val topCluster = numPoints + numPoints
 
-    val clustersFiltered = clusters.filterByRange(minCluster, minCluster + (topCluster - numCluster)).sortByKey().cache()
+    val clustersFiltered = clusters.filterByRange(minCluster, topCluster - numCluster).sortByKey().cache()
 
     //We generate an auxiliary RDD to start each cluster at each point
-    var auxPoints = totalPoints.map(value => (value,value))
+    var auxPoints = totalPoints.map(value => (value, value))
     var a = 0
 
     //We go through each row of the filtered cluster file
-    for (iter <- clustersFiltered.collect()){
-      val start = System.nanoTime
+    for (iter <- clustersFiltered.collect()) {
 
       //We save the elements of each row in auxiliary variables to be able to filter later
       val point1 = iter._2._1
@@ -188,102 +244,189 @@ class LinkageModel(_clusters: RDD[(Long, (Int, Int))], var _clusterCenters: Arra
       val cluster = iter._1.toInt
 
       //We go through the auxiliary RDD and check if in this iteration it is necessary to change the cluster to which each point belongs
-      auxPoints = auxPoints.map {value =>
+      auxPoints = auxPoints.map { value =>
         var auxValue = value
-        if(value._2 == point1 || value._2 == point2){
+        if (value._2 == point1 || value._2 == point2) {
           auxValue = (value._1, cluster)
         }
         auxValue
       }
 
-      val duration = (System.nanoTime - start) / 1e9d
-      println(s"TIME ITERATION: $duration")
       a = a + 1
+      //      auxPoints = auxPoints.coalesce(8).persist(StorageLevel.MEMORY_AND_DISK_2)
 
       //Every two hundred iterations we make a checkpoint so that the memory does not overflow
-      if(a % 200 == 0){
+      if (a % 200 == 0) {
         auxPoints.checkpoint()
         auxPoints.count()
       }
     }
 
+    //Show the duration to create the centroids
+    val duration = (System.nanoTime - start) / 1e9d
+    logInfo("Time for create result model: " + duration)
+
     //Return the result of clustering
     auxPoints
   }
 
-  def inicializeCenters(coordinates: RDD[(Int, Vector)], numClusters: Int, numPoints: Int, resultPoints: RDD[(Int, Int)]): Array[Vector] = {
+  /**
+    * Calculate the mean of Iterable[Vector]
+    *
+    * @param vectors  RDD with the values of each point and its id. The format is (Int, Vector)
+    * @return A Vector that represents the centroid from one cluster
+    * @example calculateMean(vectors)
+    */
+  def calculateMean(vectors: Iterable[Vector]): Vector = {
 
-    val sc = resultPoints.sparkContext
-    var auxVectors = sc.emptyRDD[Vector]
+    val vectorsCalculateMean = vectors.map(v => v.toArray.map(d => (d/vectors.size)))
 
-    var rest = Array[Vector]()
+    val sumArray = new Array[Double](vectorsCalculateMean.head.size)
+    val auxSumArray = vectorsCalculateMean.map{
+      case va =>
+        var a = 0
+        while (a < va.size){
+          sumArray(a) += va.apply(a)
+          a += 1
+        }
+        sumArray
+    }.head
 
-    for (iter <- resultPoints.map(row => row._2).distinct().collect()){
+    Vectors.dense(auxSumArray)
+  }
 
-      for(point <- resultPoints.filter(id => id._2 == iter).map(value => value._1).collect()){
-        auxVectors = auxVectors.union(coordinates.filter(id => id._1 == point).map(value => value._2))
+  /**
+    * Create a Array with the centroids of the model in Vector format
+    *
+    * @param coordinates       RDD with the values of each point and its id. The format is (Int, Vector)
+    * @param kMin              Filter to the minimum number of points to each centroid
+    * @param numPoints         The number of points on the dataset
+    * @param numClusters       The number of the clusters
+    * @param totalPoints       A RDD with all points on the dataset
+    * @param numStaticClusters The number of clusters for each CVI iteration
+    * @return A Array with the centroids at the model
+    * @example inicializeCenters(coordinates, 3, 150, 2, totalPoints, 2)
+    */
+  def inicializeCenters(coordinates: RDD[(Int, Vector)], kMin: Int, numPoints: Int, numClusters: Int, totalPoints: RDD[Int], numStaticClusters: Int): Array[Vector] = {
+
+    val start = System.nanoTime
+
+    //We filter the total of clusters establishing a lower and upper limit depending on the number of points and the level at which we want to stop
+    val minCluster = numPoints + 1
+    val topCluster = numPoints + numPoints
+
+    val clustersFiltered = clusters.filterByRange(minCluster, topCluster - numClusters).sortByKey().cache()
+
+    //We generate an auxiliary RDD to start each cluster at each point
+    var auxPoints = totalPoints.map(value => (value, value))
+    var a = 0
+
+    //We go through each row of the filtered cluster file
+    for (iter <- clustersFiltered.collect()) {
+
+      //We save the elements of each row in auxiliary variables to be able to filter later
+      val point1 = iter._2._1
+      val point2 = iter._2._2
+      val cluster = iter._1.toInt
+
+      //We go through the auxiliary RDD and check if in this iteration it is necessary to change the cluster to which each point belongs
+      auxPoints = auxPoints.map { value =>
+        var auxValue = value
+        if (value._2 == point1 || value._2 == point2) {
+          auxValue = (value._1, cluster)
+        }
+        auxValue
       }
 
-      val summary: MultivariateStatisticalSummary = Statistics.colStats(auxVectors)
-      rest = rest :+ summary.mean
+      a = a + 1
 
+      //Every two hundred iterations we make a checkpoint so that the memory does not overflow
+      if (a % 200 == 0) {
+        auxPoints.checkpoint()
+        auxPoints.count()
+      }
     }
+    println("KMIN: " + kMin)
+    //Join the coordinates RDD with the result of the model and calculate the centroid from each cluster if the size of the cluster is more or equal than the minimum number of points chosen
+    val joinRDDs = coordinates.join(auxPoints).map(value => (value._2._2,value._2._1)).groupByKey()
+    val joinRDDsFiltered = joinRDDs.filter(_._2.size >= kMin)
+
+    var rest  = new Array[Vector](numStaticClusters)
+
+    //If the number of centroids that meet the condition of outliers is equal to or greater than the number of initial clusters, they are calculated
+    if(joinRDDsFiltered.count() >= numStaticClusters){
+      rest = joinRDDsFiltered.mapValues(calculateMean(_)).map(_._2).take(numStaticClusters)
+    }
+    //If not, the centroids of the following number of clusters are calculated
+    else if (numClusters < numPoints - 5){
+      rest = inicializeCenters(coordinates, Math.round((kMin.toFloat/numPoints)*joinRDDs.map(_._2.size).max()), numPoints, numClusters + 1, totalPoints, numStaticClusters)
+    }else {
+      rest = inicializeCenters(coordinates, kMin, numPoints, 2, totalPoints, 2)
+    }
+
+    //Show the duration to create the centroids
+    val duration = (System.nanoTime - start) / 1e9d
+    logInfo("Time for create centroids: " + duration)
 
     rest
 
   }
 
+  /**
+    * Return the Linkage cost (sum of squared distances of points to their nearest center) for this model on the given data
+    *
+    * @param points RDD with the coordenates all points in the dataset
+    * @return Double cost for this model on the given data
+    * @example computeCost(points)
+    */
   def computeCost(points: RDD[Vector]): Double = {
 
-    var rest = 0.0
-
-      for (p <- points.collect()){
-        rest += pointCost(clusterCenters, p)
-      }
-
-    rest
+    //For each point calculate the cost to its centroid
+    points.map(point => pointCost(point)).sum()
 
   }
 
-  def pointCost(centroids: Array[Vector], vector: Vector): Double = {
-    var cost = Array[Double]()
+  /**
+    * Return the cost (sum of squared distances of points to their nearest center) for this model on the given point
+    *
+    * @param vector Coordinates to the point in a Vector format
+    * @return Double cost for this model on the given point
+    * @example pointCost(vector)
+    */
+  def pointCost(vector: Vector): Double = {
 
-    var coor = 0
     var costVector = 0.0
-    val sizeVector = vector.size
 
-    for (center <- centroids){
-
-      while (coor < sizeVector){
-        val dist = Math.abs(vector.apply(coor) - center.apply(coor))
-        costVector += (dist*dist)
-        coor += 1
+    for (center <- clusterCenters) {
+      //Only calculated the cost if the point it's near to the centroid iteration
+      if (predict(vector) == clusterCenters.indexOf(center)) {
+        costVector = Vectors.sqdist(vector, center)
       }
-
-      cost = cost :+ costVector
     }
 
-    cost.min
+    costVector
   }
 
+  /**
+    * Returns the cluster index that a given point belongs to
+    *
+    * @param point Coordinates to the point in a Vector format
+    * @return Int the cluster index that a given point belongs to
+    * @example predict(point)
+    */
   def predict(point: Vector): Int = {
 
-    var dist = 10000000000000000000.0
-    var coor = 0
-    val sizeVector = point.size
+    var dist = -1.0
+    var distAux = 0.0
     var centerPoint = point
 
+    for (center <- clusterCenters) {
 
-    for (center <- clusterCenters){
-      var distAux = 0.0
+      //Calculate the distance between the point and the centroid iteration
+      distAux = Vectors.sqdist(point, center)
 
-      while (coor < sizeVector){
-          distAux = Math.abs(point.apply(coor) - center.apply(coor))
-          distAux += (distAux*distAux)
-          coor += 1
-        }
-
-      if (dist > distAux) {
+      //If the distAux it's less than dist, the new dist is a old distAux and the centroid more near it's this iteration
+      if (dist == -1 || dist > distAux) {
         dist = distAux
         centerPoint = center
       }
